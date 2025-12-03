@@ -1,0 +1,279 @@
+# Mafiaoso
+Great
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Mafia Ultimate 16 Players</title>
+
+<style>
+    body { 
+        margin: 0; 
+        font-family: "Trebuchet MS", sans-serif; 
+        background: black; 
+        color: white; 
+        transition: background 1.2s ease, color 1.2s ease; 
+    }
+    body.night { background: #0d0012; color: #eee; }
+    body.day { background: #f7f7f7; color: #111; }
+
+    h1 { text-align: center; margin-top: 20px; font-size: 2rem; }
+    #status { text-align: center; margin: 15px; font-size: 1.3rem; }
+
+    #buttons { text-align: center; margin: 20px; }
+    .btn { 
+        background: #222; 
+        color: white; 
+        padding: 12px 26px; 
+        border-radius: 6px; 
+        border: 1px solid #444; 
+        margin: 6px; 
+        cursor: pointer; 
+        font-size: 1rem;
+        transition: background 0.25s ease, box-shadow 0.25s ease;
+    }
+    .btn:hover { background: #444; box-shadow: 0 0 8px rgba(255,255,255,0.3); }
+
+    #log { 
+        margin: 10px auto; width: 92%; height: 300px; 
+        overflow-y: auto; border: 1px solid #333; 
+        padding: 12px; background: rgba(0,0,0,0.6);
+        border-radius: 6px;
+    }
+
+    #roleReveal { text-align: center; font-size: 1.5rem; margin: 15px; }
+    #roleDescription { 
+        text-align: center; 
+        margin-top: 10px; 
+        font-size: 1rem; 
+        color: #bbb; 
+        width: 85%;
+        margin-left: auto; margin-right: auto;
+    }
+
+    #allRolesBox {
+        width: 85%;
+        margin: 20px auto;
+        padding: 15px;
+        border: 1px solid #777;
+        background: rgba(0,0,0,0.5);
+        display: none;
+    }
+</style>
+</head>
+
+<body>
+
+<h1>MAFIA — Ultimate 16 Players</h1>
+
+<div id="status">Click to reveal all roles…</div>
+<div id="buttons"></div>
+
+<div id="allRolesBox"></div>
+
+<div id="log"></div>
+<div id="roleReveal"></div>
+<div id="roleDescription"></div>
+
+<script>
+// -------------------- PLAYER DATA --------------------
+
+let players = [
+    {name:"Player 1",role:"Mafia",alive:true,description:"The Mafia secretly kills one player each night."},
+    {name:"Player 2",role:"Medic",alive:true,description:"Protects one player each night from dying."},
+    {name:"Player 3",role:"Detective",alive:true,description:"Investigates one player per night."},
+    {name:"Player 4",role:"Witch",alive:true,description:"Cancels another player’s action."},
+    {name:"Player 5",role:"Analyst",alive:true,description:"Receives clues about Mafia."},
+    {name:"Player 6",role:"Sociopath",alive:true,description:"May kill during day discussions."},
+    {name:"Player 7",role:"Assassin",alive:true,description:"Acts independently to kill each night."},
+    {name:"Player 8",role:"Butcher",alive:true,description:"Every 3rd night devours a player."},
+    {name:"Player 9",role:"Sower",alive:true,description:"Stitches two dead players together."},
+    {name:"Player 10",role:"Clown",alive:true,description:"When dead, kills after each vote."},
+    {name:"Player 11",role:"Baker",alive:true,description:"Gives muffins with random effects."},
+    {name:"Player 12",role:"Villager",alive:true,description:"No special ability."},
+    {name:"Player 13",role:"Villager",alive:true,description:"No special ability."},
+    {name:"Player 14",role:"Villager",alive:true,description:"No special ability."},
+    {name:"Player 15",role:"Villager",alive:true,description:"No special ability."},
+    {name:"Player 16",role:"Villager",alive:true,description:"No special ability."}
+];
+
+// -------------------- THEME SWITCHING --------------------
+
+function setNight(){ document.body.classList.remove("day"); document.body.classList.add("night"); }
+function setDay(){ document.body.classList.remove("night"); document.body.classList.add("day"); }
+
+// -------------------- UTILITIES --------------------
+
+function log(msg){ document.getElementById("log").innerHTML += `<div>• ${msg}</div>`; }
+function updateStatus(msg){ document.getElementById("status").innerText = msg; }
+
+function renderButtons(arr, callback){
+    let div=document.getElementById("buttons");
+    div.innerHTML="";
+    arr.forEach(o=>{
+        let b=document.createElement("button");
+        b.className="btn"; b.innerText=o.name;
+        b.onclick=()=>callback(o);
+        div.appendChild(b);
+    });
+}
+
+function alivePlayers(){ return players.filter(p=>p.alive); }
+function aliveTown(){ return players.filter(p=>p.alive && !["Mafia","Assassin"].includes(p.role)); }
+function aliveMafia(){ return players.filter(p=>p.alive && p.role==="Mafia"); }
+function assassinAlive(){ return players.find(p=>p.role==="Assassin" && p.alive); }
+
+// -------------------- ONE-BUTTON FULL ROLE REVEAL --------------------
+
+function revealAllRoles() {
+    let box = document.getElementById("allRolesBox");
+    box.style.display = "block";
+    box.innerHTML = "<h2>All Roles Revealed</h2>";
+
+    players.forEach(p => {
+        box.innerHTML += `<div><b>${p.name}</b>: ${p.role}</div>`;
+    });
+
+    updateStatus("All roles revealed. Night falls...");
+    renderButtons([{name:"Begin Game"}], () => nightPhase());
+}
+
+// -------------------- WIN CONDITIONS --------------------
+
+function checkWin() {
+    let mafiaCount = aliveMafia().length;
+    let townCount = aliveTown().length;
+    let assassin = assassinAlive();
+
+    // Assassin Wins
+    if (assassin && mafiaCount === 0 && townCount <= 1) {
+        endGame("🏆 ASSASSIN WINS — They survived everyone else!");
+        return true;
+    }
+
+    // Mafia Wins
+    if (mafiaCount > 0 && mafiaCount >= townCount && !assassin) {
+        endGame("🏆 MAFIA WINS — They control the town!");
+        return true;
+    }
+
+    // Town Wins
+    if (mafiaCount === 0 && !assassin) {
+        endGame("🏆 TOWN WINS — All threats eliminated!");
+        return true;
+    }
+
+    return false;
+}
+
+function endGame(message) {
+    updateStatus(message);
+    renderButtons([], ()=>{});
+    log("🛑 Game Over");
+
+    let box = document.getElementById("allRolesBox");
+    box.style.display = "block";
+    box.innerHTML = "<h2>Final Roles</h2>";
+
+    players.forEach(p => {
+        box.innerHTML += `<div><b>${p.name}</b> — ${p.role} (${p.alive?"Alive":"Dead"})</div>`;
+    });
+}
+
+// -------------------- NIGHT PHASE --------------------
+
+function nightPhase() {
+    if (checkWin()) return;
+    setNight();
+
+    updateStatus("Night: Mafia chooses a target.");
+
+    // Mafia target selection
+    renderButtons(aliveTown(), mafiaTarget=>{
+        log(`Mafia targeted ${mafiaTarget.name}`);
+
+        let assassin = assassinAlive();
+
+        if (!assassin) {
+            mafiaTarget.alive = false;
+            morningPhase();
+            return;
+        }
+
+        updateStatus("Night: Assassin chooses a target.");
+
+        // Assassin selection
+        renderButtons(alivePlayers().filter(p=>p!==mafiaTarget), assassinTarget=>{
+            log(`Assassin killed ${assassinTarget.name}`);
+            assassinTarget.alive=false;
+            mafiaTarget.alive=false;
+            morningPhase();
+        });
+    });
+}
+
+// -------------------- MORNING --------------------
+
+function morningPhase() {
+    if (checkWin()) return;
+    setDay();
+    log("☀️ Morning has arrived.");
+    votingPhase();
+}
+
+// -------------------- VOTING --------------------
+
+function votingPhase() {
+    if (checkWin()) return;
+
+    updateStatus("Day: Each player votes ONCE.");
+
+    let alive = alivePlayers();
+    let votes = {};
+    let votersRemaining = new Set(alive.map(p=>p.name));
+
+    alive.forEach(p=>votes[p.name]=0);
+
+    function chooseVoter() {
+        if (votersRemaining.size === 0) return finishVoting();
+
+        let voterName = [...votersRemaining][0];
+        let voter = players.find(p=>p.name===voterName);
+
+        updateStatus(`${voter.name}, choose someone to vote for:`);
+
+        renderButtons(alivePlayers().filter(t=>t.name!==voter.name), target=>{
+            votes[target.name]++;
+            log(`${voter.name} voted for ${target.name}`);
+            votersRemaining.delete(voter.name);
+            chooseVoter();
+        });
+    }
+
+    chooseVoter();
+
+    function finishVoting() {
+        let maxVotes = Math.max(...Object.values(votes));
+        let eliminatedName = Object.keys(votes).find(n=>votes[n]===maxVotes);
+        let eliminated = players.find(p=>p.name===eliminatedName);
+
+        eliminated.alive=false;
+        log(`💀 ${eliminated.name} was eliminated by vote.`);
+
+        if (checkWin()) return;
+
+        nightPhase();
+    }
+}
+
+// -------------------- START --------------------
+
+function initializeGame() {
+    renderButtons([{name:"Reveal ALL Roles"}], revealAllRoles);
+}
+
+initializeGame();
+
+</script>
+</body>
+</html>
